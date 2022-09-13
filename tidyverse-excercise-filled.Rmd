@@ -1,0 +1,221 @@
+---
+title: "Tidyverse Exercise"
+author: ""
+date: "2022-09-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Tidyverse
+
+- Load packages
+  - we need tidyverse
+
+```{r}
+library(tidyverse)
+library(stringi)
+```
+
+## Section 1: Data description
+
+### read csv data
+
+We will use the country level vaccination in the US. This is public data published by CDC available from: https://data.cdc.gov/Vaccinations/COVID-19-Vaccinations-in-the-United-States-County/8xkx-amqh
+
+You can check the variable definition from the webpage. 
+
+The data is here: https://www.dropbox.com/s/5jy18d1thntcc5t/COVID-19_Vaccinations_in_the_United_States_County.csv.tar.gz?dl=true
+
+```{r}
+dir.create("tmp")
+download.file("https://www.dropbox.com/s/5jy18d1thntcc5t/COVID-19_Vaccinations_in_the_United_States_County.csv.tar.gz?dl=1", 
+              destfile = "tmp/COVID-19_Vaccinations_in_the_United_States_County.csv.tar.gz")
+```
+
+#### Read the file
+
+```{r}
+df_covid <- read_csv("tmp/COVID-19_Vaccinations_in_the_United_States_County.csv.tar.gz")
+df_covid <- vroom::vroom("tmp/COVID-19_Vaccinations_in_the_United_States_County.csv.tar.gz")
+dt_covid <- data.table::fread("tmp/COVID-19_Vaccinations_in_the_United_States_County.csv.tar.gz")
+
+vroom::vroom_write(df_covid, "tmp/df_covid_2.csv.tar.gz")
+```
+
+
+### Simple discription of the table
+
+Now the data is in R workspace. Do the following
+
+### Count the number of variabes and rows
+
+```{r}
+dim(df_covid)
+```
+
+### Print out the first 6 rows of the data.frame
+
+```{r}
+df_covid %>% head()
+```
+
+
+### How many states exists?
+
+(Hint: use `count()`)
+
+- Obviously there are data points not from states. What are they?
+
+```{r}
+df_covid %>%
+  count(Recip_State) 
+```
+
+
+## Data wrangling, Part 1
+
+### Convert Date to Date
+
+The variable Date is character. Convert it to a Date variable.
+
+```{r}
+library(magrittr)
+library(lubridate)
+df_covid  %<>%
+  mutate(Date = Date %>% mdy()) #%>%
+  #pull(Date) %>% month() %>% head()
+```
+
+### Erase unnecessary rows
+
+First remove the non-country entries
+
+```{r}
+df_covid %<>%
+  #mutate(Date=as.Date(Date, "%m/%d/%Y"))
+  mutate(FIPS_num = FIPS %>% as.integer()) %>%
+  filter(!is.na(FIPS_num))
+#filter(!is.na(Recip_County))  
+
+```
+
+
+### Create a subset dataset
+
+Find the latest date of the data, then subset the data with only the newest date for each country
+
+```{r}
+max_date <- df_covid %>% 
+  pull(Date) %>% max()
+
+df_covid_newest <- df_covid %>%
+  filter(Date == max_date)
+
+
+```
+
+### Max percentatge, min percentage
+
+Which county has the highest vaccination rate? What is the number?
+
+```{r}
+df_covid_newest %>% 
+  select(1:5, Booster_Doses_18Plus_Vax_Pct) %>%
+  arrange(desc(Booster_Doses_18Plus_Vax_Pct))
+
+
+
+```
+
+
+## Data wrangling, Part 2
+
+### Proportion of county with more than 50 percent vaccination rate (latest)
+
+Using the latest data created above, find out proportion of counties with more than 50 percent of vaccine take up rate.
+
+```{r}
+df_covid_newest %>% 
+  select(1:5, Booster_Doses_18Plus_Vax_Pct) %>%
+  count(Booster_Doses_18Plus_Vax_Pct > 50) %>%
+  mutate(prop = n/sum(n))
+
+```
+
+### Proportion of county with more than 50 percent vaccination rate, by state (latest)
+
+```{r}
+df_covid_newest %>% 
+  group_by(Recip_State) %>%
+  select(1:5, Booster_Doses_18Plus_Vax_Pct) %>%
+  count(Booster_Doses_18Plus_Vax_Pct > 50) %>%
+  mutate(prop = n/sum(n)) %>%
+  filter(`Booster_Doses_18Plus_Vax_Pct > 50` == TRUE) %>%
+  arrange(desc(prop))
+  
+
+```
+
+### Date when the vaccination rate exceeded 10 percent in each county
+
+```{r}
+df_covid %>% 
+  group_by(Recip_County) %>%
+  select(1:5, Booster_Doses_18Plus_Vax_Pct) %>%
+  filter(Booster_Doses_18Plus_Vax_Pct >= 10) %>%
+  filter(Date == min(Date))
+  
+
+df_covid %>% 
+  filter(Administered_Dose1_Pop_Pct > .1) %>%
+  group_by(Recip_County) %>%
+  summarise(over10_date = min(Date))
+```
+
+### Aggregate the number of vaccination
+
+For each state, calculate the total number of fully vaccinated people 
+and average of vaccination pct across counties for each day (Hint: grouping and summarize)
+
+
+```{r}
+df_covid_newest %>%
+  group_by(Recip_State) %>%
+  summarize(Booster_Doses_18Plus = sum(Booster_Doses_18Plus, na.rm = T), 
+            Booster_Doses_18Plus_Vax_Pct = mean(Booster_Doses_18Plus_Vax_Pct, na.rm = T))
+```
+
+
+
+## Visualizing (Optional)
+
+Now let's visualize the outputs using ggplot
+
+### Time series plot of total vaccination in the US
+
+```{r}
+df_covid %>%
+  group_by(Date) %>%
+  summarize(Booster_Doses_18Plus = sum(Booster_Doses_18Plus, na.rm = T)) %>%
+  filter(Booster_Doses_18Plus > 0 ) %>%
+  ggplot(aes(x = Date, y = Booster_Doses_18Plus)) + geom_line() +
+  scale_x_date(date_labels = "%y-%b")
+
+```
+
+
+### Time series plot of total vaccination by the state
+
+```{r}
+df_covid %>%
+  group_by(Date, Recip_State) %>%
+  summarize(Booster_Doses_18Plus = sum(Booster_Doses_18Plus, na.rm = T)) %>%
+  filter(Booster_Doses_18Plus > 0 ) %>%
+  ggplot(aes(x = Date, y = Booster_Doses_18Plus, color = Recip_State)) + geom_line() +
+  scale_x_date(date_labels = "%y-%b")
+
+```
+
