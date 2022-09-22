@@ -42,7 +42,7 @@ df_covid <- read_csv("tmp/COVID-19_Vaccinations_in_the_United_States_County.csv.
 df_covid <- vroom::vroom("tmp/COVID-19_Vaccinations_in_the_United_States_County.csv.tar.gz")
 dt_covid <- data.table::fread("tmp/COVID-19_Vaccinations_in_the_United_States_County.csv.tar.gz")
 
-vroom::vroom_write(df_covid, "tmp/df_covid_2.csv.tar.gz")
+#vroom::vroom_write(df_covid, "tmp/df_covid_2.csv.tar.gz")
 ```
 
 
@@ -84,7 +84,7 @@ The variable Date is character. Convert it to a Date variable.
 ```{r}
 library(magrittr)
 library(lubridate)
-df_covid  %<>%
+df_covid %<>%
   mutate(Date = Date %>% mdy()) #%>%
   #pull(Date) %>% month() %>% head()
 ```
@@ -115,6 +115,10 @@ df_covid_newest <- df_covid %>%
   filter(Date == max_date)
 
 
+df_covid_newest <- df_covid %>%
+  group_by(FIPS_num) %>%
+  filter(Date == max(Date))
+
 ```
 
 ### Max percentatge, min percentage
@@ -139,6 +143,7 @@ Using the latest data created above, find out proportion of counties with more t
 
 ```{r}
 df_covid_newest %>% 
+  ungroup() %>%
   select(1:5, Booster_Doses_18Plus_Vax_Pct) %>%
   count(Booster_Doses_18Plus_Vax_Pct > 50) %>%
   mutate(prop = n/sum(n))
@@ -152,10 +157,17 @@ df_covid_newest %>%
   group_by(Recip_State) %>%
   select(1:5, Booster_Doses_18Plus_Vax_Pct) %>%
   count(Booster_Doses_18Plus_Vax_Pct > 50) %>%
+  mutate(prop = n/sum(n))
+
+
+df_covid_newest %>% 
+  group_by(Recip_State) %>%
+  select(1:5, Booster_Doses_18Plus_Vax_Pct) %>%
+  count(Booster_Doses_18Plus_Vax_Pct > 50) %>%
   mutate(prop = n/sum(n)) %>%
   filter(`Booster_Doses_18Plus_Vax_Pct > 50` == TRUE) %>%
   arrange(desc(prop))
-  
+
 
 ```
 
@@ -202,7 +214,7 @@ df_covid %>%
   summarize(Booster_Doses_18Plus = sum(Booster_Doses_18Plus, na.rm = T)) %>%
   filter(Booster_Doses_18Plus > 0 ) %>%
   ggplot(aes(x = Date, y = Booster_Doses_18Plus)) + geom_line() +
-  scale_x_date(date_labels = "%y-%b")
+  scale_x_date(date_labels = "%Y-%m")
 
 ```
 
